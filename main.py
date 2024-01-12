@@ -8,6 +8,8 @@ from watchdog.events import FileSystemEventHandler
 
 from tar import extract_tarfile
 
+VERSION = 'waytooearlyman'
+
 SUPPORTED_ARCHIVES = ['tar.gz']
 
 def setup_argparse():
@@ -15,7 +17,8 @@ def setup_argparse():
         prog="auto uncompressor watching for new compressed files",
         description="Watches over a specified directory and automatically uncompresses any found archive",
     )
-    parser.add_argument("target_directory")
+    parser.add_argument("watch_directory", type=str)
+    parser.add_argument("-t", "--target_directory", required=False)
     arguments = parser.parse_args()
     return arguments
 
@@ -25,14 +28,28 @@ def is_dir(path: str):
 def setup_logger():
     raise Exception("not yet implemented")
 
+def check_arguments(watch_directory: str, target_directory: str|None):
+    if target_directory is not None:
+        if not is_dir(target_directory):
+            sys.exit(f"Invalid given target_directory: {target_directory}\nNot a directory.")
+
+    if not is_dir(watch_directory):
+        sys.exit(f"Invalid given watch_directory: {watch_directory}\nNot a directory.")
+
 def main():
     arguments = setup_argparse()
+    watch_directory = arguments.watch_directory
     target_directory = arguments.target_directory
 
-    if not is_dir(target_directory):
-        sys.exit(f'Invalid target directory: {target_directory}\nNot a directory.')
+    check_arguments(watch_directory, target_directory)
 
-    watcher = WatchDog(target_directory)
+    print(f"""auto-uncompressor\nversion: {VERSION}\n
+Running with options:
+Watch directory: {watch_directory}
+Target Directory: {target_directory if isinstance(target_directory, str) else "None, extracting in archives directory."}
+""".strip())
+
+    watcher = WatchDog(watch_directory)
     watcher.run()
 
 class WatchDog:
