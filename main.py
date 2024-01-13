@@ -2,17 +2,20 @@ import sys
 import time
 import argparse
 from tarfile import ReadError
-from typing import Union, Tuple
+from typing import Tuple
 
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileSystemEvent
 
+from extractors.zip import extract_zip
 from utils import is_dir, is_empty_file
 from extractors.tar import extract_tarfile
 
 VERSION = 'waytooearlyman'
 
-SUPPORTED_ARCHIVES = ['tar.gz']
+SUPPORTED_ARCHIVES = ['tar.gz', 'zip']
+
+mapping_file_extension_to_extract_function = {"tar.gz": extract_tarfile, "zip": extract_zip}
 
 
 def setup_argparse():
@@ -102,18 +105,15 @@ def process_event(event_type: str, path: str, target_directory: str):
     file_extension, result = get_file_extension_and_is_supported(path)
     if not result:
         return
-    match file_extension:
-        case 'tar.gz':
-            if is_empty_file(path):
-                return
-            print(f"Extracting archive: {path}...")
-            try:
-                extract_tarfile(path=path, target_directory=target_directory)
-            except ReadError as e:
-                if event_type == "created" and e.args[0] == 'empty file':
-                    return
 
-            print(f"Finished extracting {path}.\n")
+    print(f"Extracting archive: {path}...")
+    try:
+        mapping_file_extension_to_extract_function.get(file_extension)(path=path, target_directory=target_directory)
+    except ReadError as e:
+        if event_type == "created" and e.args[0] == 'empty file':
+            return
+
+    print(f"Finished extracting {path}.\n")
 
 
 class WatchDogEventHandler(FileSystemEventHandler):
