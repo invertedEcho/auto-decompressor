@@ -1,16 +1,19 @@
 import sys
 import time
 import argparse
-from pathlib import Path
+from tarfile import ReadError
+from typing import Union, Tuple
 
 from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import FileSystemEventHandler, FileSystemEvent
 
-from tar import extract_tarfile
+from utils import is_dir, is_empty_file
+from extractors.tar import extract_tarfile
 
 VERSION = 'waytooearlyman'
 
 SUPPORTED_ARCHIVES = ['tar.gz']
+
 
 def setup_argparse():
     parser = argparse.ArgumentParser(
@@ -22,19 +25,18 @@ def setup_argparse():
     arguments = parser.parse_args()
     return arguments
 
-def is_dir(path: str):
-    return Path(path).is_dir()
 
 def setup_logger():
-    raise Exception("not yet implemented")
+    raise NotImplementedError('Not yet implemented.')
 
-def check_arguments(watch_directory: str, target_directory: str|None):
-    if target_directory is not None:
-        if not is_dir(target_directory):
-            sys.exit(f"Invalid given target_directory: {target_directory}\nNot a directory.")
+
+def check_arguments(watch_directory: str, target_directory: str | None):
+    if target_directory is not None and not is_dir(target_directory):
+        sys.exit(f"Invalid given target_directory: {target_directory}\nNot a directory.")
 
     if not is_dir(watch_directory):
         sys.exit(f"Invalid given watch_directory: {watch_directory}\nNot a directory.")
+
 
 def main():
     arguments = setup_argparse()
@@ -52,16 +54,17 @@ Target Directory: {target_directory if isinstance(target_directory, str) else "N
     watcher = WatchDog(watch_directory)
     watcher.run()
 
+
 class WatchDog:
-    def __init__(self, target_directory):
-        self.target_directory = target_directory
+    def __init__(self, watch_directory):
+        self.watch_directory = watch_directory
         self.observer = Observer()
 
     def run(self):
         watch_dog_handler = WatchDogHandler()
-        self.observer.schedule(watch_dog_handler, self.target_directory, recursive=True)
+        self.observer.schedule(watch_dog_handler, self.watch_directory, recursive=True)
         self.observer.start()
-        
+
         try:
             while True:
                 time.sleep(1)
@@ -71,42 +74,56 @@ class WatchDog:
 
         self.observer.join()
 
-def is_archive_supported(path: str):
+
+def get_file_extension_and_is_supported(path: str) -> Tuple[str, bool]:
     """TODO: Don't just check string-wise but use something to detect the filetype -> `file`?"""
     if not path.__contains__('.'):
-        print("file doesnt contain a dot")
         # TODO Fix this
-        return 'fileDoesntContainDot', False 
+        return 'fileDoesntContainDot', False
     file_name_splitted = path.split(".")
 
     file_extension = file_name_splitted[-1]
 
     if len(file_name_splitted) > 2:
-        print("this file has more than two dots, combining it  together")
-        print(f" splitted: {file_name_splitted}")
         second_extension = file_name_splitted[-1]
         first_extension = file_name_splitted[-2]
         file_extension = f'{first_extension}.{second_extension}'
-        
-    print(f"found file_extension: {file_extension}")
+
     return file_extension, file_extension in SUPPORTED_ARCHIVES
 
+
+def process_event(event_type: str, path: str):
+    if event_type not in ('created', 'modified'):
+        return
+
+    if path.endswith('part'):
+        return
+
+    file_extension, result = get_file_extension_and_is_supported(path)
+    if not result:
+        return
+    match file_extension:
+        case 'tar.gz':
+            if is_empty_file(path):
+                return
+            print(f"Extracting archive: {path}...")
+            try:
+                extract_tarfile(path)
+            except ReadError as e:
+                if event_type == "created" and e.args[0] == 'empty file':
+                    return
+
+            print(f"Finished extracting {path}.")
+
+
 class WatchDogHandler(FileSystemEventHandler):
-    def on_any_event(self, event):
-        print(event)
+    """on_created event: Relevant for cutting and pasting an archive
+       on_modified event: Downloading an archive into watch directory -> we assume that this because of getting renamed after .part files
+    """
 
-    def on_created(self, event):
-            src_path = event.src_path
-            print(f"we got a new file! {src_path}")
-            result = is_archive_supported(src_path)
-            if not result[1]:
-                print(f"Unsupported archive: {result[0]}")
-            match result[0]:
-                case 'tar.gz':
-                    print('exxtracting archive')
-                    extract_tarfile(src_path)
+    def on_any_event(self, event: FileSystemEvent):
+        process_event(event.event_type, event.src_path)
 
-            
- 
+
 if __name__ == "__main__":
     main()
