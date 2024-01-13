@@ -51,17 +51,18 @@ Watch directory: {watch_directory}
 Target Directory: {target_directory if isinstance(target_directory, str) else "None, extracting in archives directory."}
 """.strip())
 
-    watcher = WatchDog(watch_directory)
+    watcher = WatchDog(watch_directory, target_directory)
     watcher.run()
 
 
 class WatchDog:
-    def __init__(self, watch_directory):
+    def __init__(self, watch_directory, target_directory) -> None:
         self.watch_directory = watch_directory
+        self.target_directory = target_directory if target_directory is not None else watch_directory
         self.observer = Observer()
 
     def run(self):
-        watch_dog_handler = WatchDogHandler()
+        watch_dog_handler = WatchDogEventHandler(target_directory=self.target_directory)
         self.observer.schedule(watch_dog_handler, self.watch_directory, recursive=True)
         self.observer.start()
 
@@ -78,8 +79,7 @@ class WatchDog:
 def get_file_extension_and_is_supported(path: str) -> Tuple[str, bool]:
     """TODO: Don't just check string-wise but use something to detect the filetype -> `file`?"""
     if not path.__contains__('.'):
-        # TODO Fix this
-        return 'fileDoesntContainDot', False
+        return '', False
     file_name_splitted = path.split(".")
 
     file_extension = file_name_splitted[-1]
@@ -92,7 +92,7 @@ def get_file_extension_and_is_supported(path: str) -> Tuple[str, bool]:
     return file_extension, file_extension in SUPPORTED_ARCHIVES
 
 
-def process_event(event_type: str, path: str):
+def process_event(event_type: str, path: str, target_directory: str):
     if event_type not in ('created', 'modified'):
         return
 
@@ -108,21 +108,24 @@ def process_event(event_type: str, path: str):
                 return
             print(f"Extracting archive: {path}...")
             try:
-                extract_tarfile(path)
+                extract_tarfile(path=path, target_directory=target_directory)
             except ReadError as e:
                 if event_type == "created" and e.args[0] == 'empty file':
                     return
 
-            print(f"Finished extracting {path}.")
+            print(f"Finished extracting {path}.\n")
 
 
-class WatchDogHandler(FileSystemEventHandler):
+class WatchDogEventHandler(FileSystemEventHandler):
     """on_created event: Relevant for cutting and pasting an archive
-       on_modified event: Downloading an archive into watch directory -> we assume that this because of getting renamed after .part files
+           on_modified event: Downloading an archive into watch directory -> we assume that this because of getting renamed after .part files
     """
 
+    def __init__(self, target_directory: str):
+        self.target_directory = target_directory
+
     def on_any_event(self, event: FileSystemEvent):
-        process_event(event.event_type, event.src_path)
+        process_event(event.event_type, event.src_path, target_directory=self.target_directory)
 
 
 if __name__ == "__main__":
