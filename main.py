@@ -1,20 +1,22 @@
+from pathlib import Path
 import sys
-import time
 import argparse
-from tarfile import ReadError
-from typing import Tuple
+from typing import Set
 
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler, FileSystemEvent
-from watchdog.observers.api import EventQueue
+from watchfiles.main import FileChange
 
 from extractors.zip import extract_zip
-from utils import is_dir, is_file
+from utils import is_dir
 from extractors.tar import extract_tarfile
 
-VERSION = "waytooearlyman"
+from watchfiles import Change, watch
 
-SUPPORTED_ARCHIVES = ["tar", "zip"]
+# TODO: Extract constants to some file
+VERSION = "waytooearlyman"
+SUPPORTED_ARCHIVES = ("tar", "zip")
+
+# .crdownload is chromium, .part is firefox
+PARTIAL_FILE_EXTENSIONS = (".crdownload", ".part")
 
 mapping_file_extension_to_extract_function = {
     "tar": extract_tarfile,
@@ -47,7 +49,6 @@ def check_arguments(watch_directory: str, target_directory: str | None):
         sys.exit(f"Invalid given watch_directory: {watch_directory}\nNot a directory.")
 
 
-# return early if the previous event src_path is not matching with our current one
 def main():
     arguments = setup_argparse()
     watch_directory = arguments.watch_directory
@@ -62,95 +63,56 @@ Watch directory: {watch_directory}
 Target Directory: {target_directory if isinstance(target_directory, str) else "None, extracting in archives directory."}
 """.strip()
     )
-    watcher = WatchDog(watch_directory, target_directory)
-    watcher.run()
 
-
-class WatchDog:
-    def __init__(self, watch_directory, target_directory) -> None:
-        self.watch_directory = watch_directory
-        self.target_directory = (
-            target_directory if target_directory is not None else watch_directory
+    for changes in watch(watch_directory):
+        actual_target_directory = (
+            target_directory if target_directory else watch_directory
         )
-        self.observer = Observer()
-
-    def run(self):
-        watch_dog_handler = WatchDogEventHandler(target_directory=self.target_directory)
-        self.observer.schedule(watch_dog_handler, self.watch_directory, recursive=True)
-        self.observer.start()
-
-        try:
-            while True:
-                time.sleep(1)
-        except Exception as e:
-            print(e)
-            print(type(e))
-            self.observer.stop()
-            print("Watchdog stopped")
-
-        self.observer.join()
+        handle_change(changes, actual_target_directory)
 
 
-def get_file_extension_and_is_supported(path: str) -> Tuple[str, bool]:
-    if not path.__contains__("."):
-        return "", False
-    file_name_splitted = path.split(".")
-
-    # TODO: Special handling for tar.gz files, think about a better way to do this
-    file_extension = file_name_splitted[-2] if len(file_name_splitted) > 2 else file_name_splitted[-1]
-
-    return file_extension, file_extension in SUPPORTED_ARCHIVES
+def get_file_extension(path: str):
+    splitted = path.split(".")
+    return splitted[1]
 
 
-class WatchDogEventHandler(FileSystemEventHandler):
-    """on_created event: Relevant for cutting and pasting an archive
-    on_modified event: Downloading an archive into watch directory -> we assume that this because of getting renamed after .part files
-    """
+def is_relevant_file(path: str, event: Change):
+    if not event == Change.added:
+        return False
 
-    def __init__(self, target_directory: str):
-        self.target_directory = target_directory
-        self.last_event_src_path = None
+    # Check if the file is a partial file
+    if path.endswith(PARTIAL_FILE_EXTENSIONS):
+        return False
+    # Check if the file is a supported archive
+    if not path.endswith(SUPPORTED_ARCHIVES):
+        return False
 
-    def on_any_event(self, event: FileSystemEvent):
-        process_event(
-            event.event_type, event.src_path, target_directory=self.target_directory, event=event,
-            last_event_src_path=self.last_event_src_path
+    # Check if file is of size 0
+    path2 = Path(path)
+    stat = path2.stat()
+    if stat.st_size == 0:
+        return False
+
+    return True
+
+
+def handle_change(changes: Set[FileChange], target_directory: str):
+    for change in changes:
+        event_type, path = change
+        is_relevant_file2 = is_relevant_file(path=path, event=event_type)
+        if not is_relevant_file2:
+            continue
+        print(f"Relevant file: {path}")
+        file_extension = get_file_extension(path)
+        print(f"Detected file extension: {file_extension}")
+        maybe_extractor_function = mapping_file_extension_to_extract_function.get(
+            file_extension
         )
 
+        if maybe_extractor_function is None:
+            continue
 
-def check_if_last_event_was_modified(event: FileSystemEvent):
-    print(event)
-
-
-def process_event(event_type: str, path: str, target_directory: str, event, last_event_src_path: str):
-    print(last_event_src_path)
-    if not is_file(path):
-        return
-
-    if event_type not in ("modified", "opened"):
-        return
-
-    if event_type == "created":
-        check_if_last_event_was_modified(event)
-        return
-
-    if path.endswith("part"):
-        return
-
-    file_extension, result = get_file_extension_and_is_supported(path)
-    if not result:
-        return
-
-    print(f"Extracting archive: {path}...")
-    try:
-        mapping_file_extension_to_extract_function.get(file_extension)(
-            path=path, target_directory=target_directory
-        )
-    except ReadError as e:
-        if event_type == "created" and e.args[0] == "empty file":
-            return
-
-    print(f"Finished extracting.\nArchive: {path}\nOutput directory: {target_directory}")
+        maybe_extractor_function(path=path, target_directory=target_directory)
 
 
 if __name__ == "__main__":
