@@ -7,6 +7,7 @@ from watchfiles import Change, watch
 
 from arguments import get_args
 from extractors import extract_archive
+from utils import get_file_extension
 
 VERSION = "0.1.0"
 SUPPORTED_ARCHIVES = ("tar", "zip")
@@ -37,16 +38,6 @@ Target Directory: {target_directory if isinstance(target_directory, str) else "N
             target_directory if target_directory else watch_directory
         )
         handle_change(changes, actual_target_directory)
-
-
-def get_file_extension(file: str):
-    """
-    Get's the file extension of the specified file
-
-    TODO: Doesn't handle file extensions like `.tar.gz`
-    """
-    splitted = file.split(".")
-    return splitted[1]
 
 
 def is_file_relevant(path: str, event: Change):
