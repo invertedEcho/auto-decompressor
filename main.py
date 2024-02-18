@@ -10,7 +10,7 @@ from config import load_config
 from extractors import extract_archive
 from utils import get_file_extension
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SUPPORTED_ARCHIVES = (".tar", ".zip", ".gz")
 
 # .crdownload is chromium, .part is firefox
