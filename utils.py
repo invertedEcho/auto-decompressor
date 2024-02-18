@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 
@@ -32,8 +33,6 @@ def is_file(source_path: str):
 def get_file_extension(file: str):
     """
     Get's the file extension of the specified file.
-
-    TODO: Doesn't handle file extensions like `.tar.gz`
     """
     splitted = file.split(".")
-    return splitted[1]
+    return splitted[-1]
