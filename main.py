@@ -3,24 +3,16 @@ from typing import Set
 
 from watchfiles.main import FileChange
 
-from extractors.zip import extract_zip
-from extractors.tar import extract_tarfile
-
 from watchfiles import Change, watch
 
 from arguments import get_args
+from extractors import extract_archive
 
-# TODO: Extract constants to some file
 VERSION = "0.1.0"
 SUPPORTED_ARCHIVES = ("tar", "zip")
 
 # .crdownload is chromium, .part is firefox
 PARTIAL_FILE_EXTENSIONS = (".crdownload", ".part")
-
-mapping_file_extension_to_extract_function = {
-    "tar": extract_tarfile,
-    "zip": extract_zip,
-}
 
 
 def setup_logger():
@@ -84,16 +76,10 @@ def handle_change(changes: Set[FileChange], target_directory: str):
         print(f"Relevant file: {path}")
         file_extension = get_file_extension(path)
         print(f"Detected file extension: {file_extension}")
-        maybe_extractor_function = mapping_file_extension_to_extract_function.get(
-            file_extension
+
+        extract_archive(
+            path=path, file_extension=file_extension, target_directory=target_directory
         )
-
-        if maybe_extractor_function is None:
-            continue
-
-        print(f"Extracting archive: {path}")
-        maybe_extractor_function(path=path, target_directory=target_directory)
-        print(f"Extracted archive in directory: {target_directory}")
 
 
 if __name__ == "__main__":
