@@ -1,15 +1,14 @@
 from pathlib import Path
-import sys
-import argparse
 from typing import Set
 
 from watchfiles.main import FileChange
 
 from extractors.zip import extract_zip
-from utils import is_dir
 from extractors.tar import extract_tarfile
 
 from watchfiles import Change, watch
+
+from arguments import get_args
 
 # TODO: Extract constants to some file
 VERSION = "0.1.0"
@@ -24,37 +23,14 @@ mapping_file_extension_to_extract_function = {
 }
 
 
-def setup_argparse():
-    parser = argparse.ArgumentParser(
-        prog="auto decompressor watching for new compressed files",
-        description="Watches over a specified directory and automatically decompresses any found archive",
-    )
-    parser.add_argument("watch_directory", type=str)
-    parser.add_argument("-t", "--target_directory", required=False)
-    arguments = parser.parse_args()
-    return arguments
-
-
 def setup_logger():
     raise NotImplementedError("Not yet implemented.")
 
 
-def check_arguments(watch_directory: str, target_directory: str | None):
-    if target_directory is not None and not is_dir(target_directory):
-        sys.exit(
-            f"Invalid given target_directory: {target_directory}\nNot a directory."
-        )
-
-    if not is_dir(watch_directory):
-        sys.exit(f"Invalid given watch_directory: {watch_directory}\nNot a directory.")
-
-
 def main():
-    arguments = setup_argparse()
+    arguments = get_args()
     watch_directory = arguments.watch_directory
     target_directory = arguments.target_directory
-
-    check_arguments(watch_directory, target_directory)
 
     print(
         f"""auto-uncompressor\nversion: {VERSION}\n
@@ -71,25 +47,28 @@ Target Directory: {target_directory if isinstance(target_directory, str) else "N
         handle_change(changes, actual_target_directory)
 
 
-def get_file_extension(path: str):
-    splitted = path.split(".")
+def get_file_extension(file: str):
+    """
+    Get's the file extension of the specified file
+
+    TODO: Doesn't handle file extensions like `.tar.gz`
+    """
+    splitted = file.split(".")
     return splitted[1]
 
 
-def is_relevant_file(path: str, event: Change):
+def is_file_relevant(path: str, event: Change):
     if not event == Change.added:
         return False
 
-    # Check if the file is a partial file
     if path.endswith(PARTIAL_FILE_EXTENSIONS):
         return False
-    # Check if the file is a supported archive
+
     if not path.endswith(SUPPORTED_ARCHIVES):
         return False
 
-    # Check if file is of size 0
-    path2 = Path(path)
-    stat = path2.stat()
+    target_path = Path(path)
+    stat = target_path.stat()
     if stat.st_size == 0:
         return False
 
@@ -99,8 +78,8 @@ def is_relevant_file(path: str, event: Change):
 def handle_change(changes: Set[FileChange], target_directory: str):
     for change in changes:
         event_type, path = change
-        is_relevant_file2 = is_relevant_file(path=path, event=event_type)
-        if not is_relevant_file2:
+        is_relevant_file = is_file_relevant(path=path, event=event_type)
+        if not is_relevant_file:
             continue
         print(f"Relevant file: {path}")
         file_extension = get_file_extension(path)
