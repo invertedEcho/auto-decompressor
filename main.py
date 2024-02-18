@@ -6,6 +6,7 @@ from watchfiles.main import FileChange
 from watchfiles import Change, watch
 
 from arguments import get_args
+from config import load_config
 from extractors import extract_archive
 from utils import get_file_extension
 
@@ -25,11 +26,16 @@ def main():
     watch_directory = arguments.watch_directory
     target_directory = arguments.target_directory
 
+    config = load_config()
+
     print(
         f"""auto-uncompressor\nversion: {VERSION}\n
 Running with options:
 Watch directory: {watch_directory}
 Target Directory: {target_directory if isinstance(target_directory, str) else "None, extracting in archives directory."}
+
+Config:
+{config}
 """.strip()
     )
 
